@@ -1,12 +1,18 @@
 import { create } from 'zustand';
-import { CoreStats, Record, Student, TrainingAction } from '../models/types';
-import { calculateSuccessRate, randomInRange, calculateRank } from '../core/mechanics';
+import { CoreStats, Record, Student, TrainingAction, GamePhase, Enemy, CombatLog } from '../models/types';
+import { calculateSuccessRate, randomInRange, calculateRank, resolveCombatTurn } from '../core/mechanics';
 import { TRAINING_ACTIONS } from '../data/actions';
+import { generateBoss } from '../data/enemies';
 
 interface GameState {
   turn: number;
-  maxTurns: number;
+  phase: GamePhase; // 'TRAINING' | 'COMBAT'
+  loopCount: number; // 보스전 클리어 횟수
+  
   student: Student;
+  currentBoss: Enemy | null;
+  combatLogs: CombatLog[];
+  
   logs: string[];
   records: Record[];
   isGameOver: boolean;
@@ -14,6 +20,7 @@ interface GameState {
   // Actions
   performTraining: (actionId: string) => void;
   rest: () => void;
+  processCombatTurn: () => void; // 전투 1턴 진행 (UI에서 호출)
   resetGame: () => void;
   loadRecords: () => void;
 }
@@ -28,116 +35,167 @@ const INITIAL_STATS: CoreStats = {
 
 export const useGameStore = create<GameState>((set, get) => ({
   turn: 1,
-  maxTurns: 20,
-  logs: ['Turn 1: 시뮬레이션 개시. 학생의 저항이 감지됩니다.'],
-  records: [],
-  isGameOver: false,
+  phase: 'TRAINING',
+  loopCount: 0,
   student: {
-    name: 'Unknown Student', // 나중에 학생 선택 기능 추가 가능
+    name: '아로나(Student)',
     maxHealth: 100,
     currentHealth: 100,
     stats: { ...INITIAL_STATS },
   },
+  currentBoss: null,
+  combatLogs: [],
+  logs: ['Turn 1: 시뮬레이션 개시. 학생 육성을 시작합니다.'],
+  records: [],
+  isGameOver: false,
 
   loadRecords: () => {
     const saved = localStorage.getItem('eraBlueArchiveRecords');
-    if (saved) {
-      set({ records: JSON.parse(saved) });
-    }
+    if (saved) set({ records: JSON.parse(saved) });
   },
 
   performTraining: (actionId: string) => {
-    const { turn, maxTurns, student, isGameOver, logs, records } = get();
-    if (turn > maxTurns || isGameOver) return;
+    const { turn, student, isGameOver, logs, phase } = get();
+    if (isGameOver || phase !== 'TRAINING') return;
 
     const action = TRAINING_ACTIONS.find(a => a.id === actionId);
     if (!action) return;
 
-    // 1. 체력 소모
+    // ... 기존 훈련 로직 (체력 소모 등) ...
     const hpDrain = randomInRange(action.hpCostMin, action.hpCostMax);
     const newHealth = Math.max(student.currentHealth - hpDrain, 0);
-
-    // 2. 성공 여부 판정
-    // Note: App.tsx 로직을 계승하되, 분리된 mechanics 사용
-    const successRate = calculateSuccessRate(student.currentHealth, student.stats.resistance); 
-    // *원작자 의도: 체력이 낮을수록(패널티가 클수록) 성공률이 오르는 구조였음. 
-    // mechanics.ts에서 로직을 약간 수정하여 체력이 낮으면 -> 저항하기 힘듦 -> 성공률 상승으로 구현함.
-
-    const roll = Math.random() * 100;
-    const isSuccess = roll < successRate;
-
-    let logMsg = `Turn ${turn}: [${action.label}] 시도. 체력 소모 -${hpDrain}. `;
+    const successRate = calculateSuccessRate({ ...student, currentHealth: newHealth });
+    
+    const isSuccess = Math.random() * 100 < successRate;
+    let logMsg = `Turn ${turn}: [${action.label}] `;
     let newStats = { ...student.stats };
 
     if (isSuccess) {
-      const boosts: string[] = [];
-      Object.entries(action.statImpact).forEach(([key, val]) => {
+      // ... 스탯 상승 로직 (기존과 동일) ...
+       Object.entries(action.statImpact).forEach(([key, val]) => {
         if (!val) return;
-        const boostAmount = randomInRange(1, Math.abs(val));
-        const actualChange = val > 0 ? boostAmount : -boostAmount;
-        
-        newStats[key as keyof CoreStats] += actualChange;
-        
-        // 스탯 Min/Max 보정 (0~100)
-        newStats[key as keyof CoreStats] = Math.max(0, Math.min(100, newStats[key as keyof CoreStats]));
-        
-        boosts.push(`${key} ${actualChange > 0 ? '+' : ''}${actualChange}`);
+        const boost = randomInRange(1, Math.abs(val));
+        const change = val > 0 ? boost : -boost;
+        newStats[key as keyof CoreStats] = Math.max(0, Math.min(100, newStats[key as keyof CoreStats] + change));
       });
-      logMsg += `성공 (확률 ${successRate}%). ${boosts.join(', ')}.`;
+      logMsg += `성공! (${successRate}%)`;
     } else {
-      logMsg += `실패 (확률 ${successRate}%). 학생이 완강히 거부합니다.`;
+      logMsg += `실패... (${successRate}%)`;
     }
 
-    // 3. 턴 진행 및 게임 오버 체크
+    // 턴 진행 및 보스 출현 체크
     const nextTurn = turn + 1;
-    let gameOverStatus = isGameOver;
-    let newRecords = [...records];
+    let nextPhase: GamePhase = 'TRAINING';
+    let nextBoss = null;
+    let nextLogs = [...logs, logMsg];
 
-    if (nextTurn > maxTurns) {
-      gameOverStatus = true;
-      logMsg += " [시뮬레이션 종료]";
-      
-      const newRec: Record = {
-        id: Date.now(),
-        finalStats: { ...newStats },
-        totalTurns: maxTurns,
-        date: new Date().toLocaleString(),
-        rank: calculateRank(newStats)
-      };
-      newRecords.push(newRec);
-      localStorage.setItem('eraBlueArchiveRecords', JSON.stringify(newRecords));
+    // 20턴마다 보스전 돌입
+    if (turn % 20 === 0) {
+      nextPhase = 'COMBAT';
+      nextBoss = generateBoss(get().loopCount);
+      nextLogs.push(`⚠️ WARNING: 강적 [${nextBoss.name}] 출현! 전투 모드로 전환합니다.`);
     }
 
     set({
       turn: nextTurn,
-      logs: [...logs, logMsg],
+      phase: nextPhase,
+      currentBoss: nextBoss,
+      logs: nextLogs,
       student: { ...student, currentHealth: newHealth, stats: newStats },
-      isGameOver: gameOverStatus,
-      records: newRecords
+      combatLogs: [] // 전투 로그 초기화
     });
   },
 
   rest: () => {
-    const { turn, maxTurns, student, logs, isGameOver } = get();
-    if (turn > maxTurns || isGameOver) return;
-
+    // ... 기존 휴식 로직 ...
+    const { turn, student, logs, phase } = get();
+    if (phase !== 'TRAINING') return;
+    
     const recover = randomInRange(20, 30);
     const newHealth = Math.min(student.currentHealth + recover, 100);
     
+    let nextPhase: GamePhase = 'TRAINING';
+    let nextBoss = null;
+    let nextLogs = [...logs, `Turn ${turn}: 휴식. 체력 회복 (+${recover})`];
+
+    if (turn % 20 === 0) {
+      nextPhase = 'COMBAT';
+      nextBoss = generateBoss(get().loopCount);
+      nextLogs.push(`⚠️ WARNING: 강적 [${nextBoss.name}] 출현!`);
+    }
+
     set({
       turn: turn + 1,
+      phase: nextPhase,
+      currentBoss: nextBoss,
       student: { ...student, currentHealth: newHealth },
-      logs: [...logs, `Turn ${turn}: 휴식. 체력이 ${recover} 회복되었습니다.`],
+      logs: nextLogs
     });
+  },
+
+  // [신규] 전투 진행 로직 (UI에서 버튼 클릭 시 1턴씩 진행 or 자동 진행)
+  processCombatTurn: () => {
+    const { student, currentBoss, combatLogs, loopCount, records, logs } = get();
+    if (!currentBoss || student.currentHealth <= 0) return;
+
+    // 전투 계산
+    const result = resolveCombatTurn(student, currentBoss, combatLogs.length + 1);
+    
+    // 상태 업데이트
+    const newStudentHp = Math.max(0, student.currentHealth - result.studentDmg);
+    const newBossHp = Math.max(0, currentBoss.hp - result.bossDmg);
+    const newCombatLogs = [...combatLogs, ...result.logs];
+
+    // 전투 종료 판정
+    if (newStudentHp <= 0) {
+      // 패배 (게임 오버)
+      const record: Record = {
+        id: Date.now(),
+        finalStats: student.stats,
+        totalTurns: get().turn,
+        date: new Date().toLocaleString(),
+        rank: calculateRank(student.stats),
+        result: `Defeated by ${currentBoss.name}`
+      };
+      const updatedRecords = [...records, record];
+      localStorage.setItem('eraBlueArchiveRecords', JSON.stringify(updatedRecords));
+
+      set({
+        student: { ...student, currentHealth: 0 },
+        isGameOver: true,
+        records: updatedRecords,
+        logs: [...logs, `☠️ 패배... ${currentBoss.name}에게 당했습니다.`]
+      });
+
+    } else if (newBossHp <= 0) {
+      // 승리 (게임 계속)
+      set({
+        phase: 'TRAINING',
+        loopCount: loopCount + 1,
+        currentBoss: null,
+        student: { ...student, currentHealth: newStudentHp }, // 체력 유지된 채로 복귀
+        logs: [...logs, `🎉 승리! ${currentBoss.name} 격파! 육성을 재개합니다.`]
+      });
+    } else {
+      // 전투 계속
+      set({
+        student: { ...student, currentHealth: newStudentHp },
+        currentBoss: { ...currentBoss, hp: newBossHp },
+        combatLogs: newCombatLogs
+      });
+    }
   },
 
   resetGame: () => {
     set({
       turn: 1,
+      phase: 'TRAINING',
+      loopCount: 0,
       isGameOver: false,
-      logs: ['New Run: 새로운 시뮬레이션을 시작합니다.'],
+      currentBoss: null,
+      logs: ['New Run: 시뮬레이션 재개.'],
       student: {
-        name: 'Unknown Student',
+        name: '아로나(Student)',
         maxHealth: 100,
         currentHealth: 100,
         stats: { ...INITIAL_STATS }

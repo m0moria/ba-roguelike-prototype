@@ -4,6 +4,7 @@ import { StatusDisplay } from './components/StatusDisplay';
 import { ActionControls } from './components/ActionControls';
 import { LogViewer } from './components/LogViewer';
 import { RecordHistory } from './components/RecordHistory';
+import { CombatOverlay } from './components/CombatOverlay'; // 추가
 
 const App: React.FC = () => {
   const { 
@@ -24,6 +25,8 @@ const App: React.FC = () => {
   }, [loadRecords]);
 
   return (
+    <div className="min-h-screen bg-gray-950 text-gray-200 p-4 md:p-8 font-mono relative">
+      <CombatOverlay /> {/* 추가: 맨 위에 배치 */}
     <div className="min-h-screen bg-gray-950 text-gray-200 p-4 md:p-8 font-mono">
       <div className="max-w-5xl mx-auto">
         <header className="mb-8 border-b border-blue-900 pb-4">
@@ -57,6 +60,7 @@ const App: React.FC = () => {
         <RecordHistory records={records} />
       </div>
     </div>
+  </div>
   );
 };
 
