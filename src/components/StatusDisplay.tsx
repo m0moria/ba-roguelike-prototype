@@ -21,8 +21,7 @@ const ProgressBar = ({ label, value, colorClass }: { label: string, value: numbe
 );
 
 export const StatusDisplay: React.FC<Props> = ({ student, turn, maxTurns }) => {
-  const successRate = calculateSuccessRate(student.currentHealth, student.stats.resistance);
-
+  const successRate = calculateSuccessRate(student);
   return (
     <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
       <h2 className="text-xl font-bold mb-4 text-blue-400 border-b border-gray-700 pb-2">
