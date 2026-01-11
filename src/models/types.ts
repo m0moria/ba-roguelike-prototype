@@ -16,6 +16,14 @@ export interface Student {
   stats: CoreStats;
 }
 
+export interface RandomEvent {
+  id: string;
+  message: string;
+  hpChangeMin: number; // 음수면 피해, 양수면 회복
+  hpChangeMax: number;
+  statImpact?: Partial<CoreStats>; // 스탯 변동 (선택사항)
+}
+
 export interface Enemy {
   name: string;
   description: string;
