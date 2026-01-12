@@ -1,55 +1,70 @@
+
 import React from 'react';
-import { Student } from '../models/types';
-import { calculateSuccessRate } from '../core/mechanics';
+import { Student, Player } from '../models/types';
 
 interface Props {
   student: Student;
+  player: Player;
   turn: number;
-  maxTurns: number;
 }
 
-const ProgressBar = ({ label, value, colorClass }: { label: string, value: number, colorClass: string }) => (
-  <div className="mb-2">
-    <div className="flex justify-between text-xs mb-1">
+const StatRow = ({ label, value, max=100, color }: { label: string, value: number, max?: number, color: string }) => (
+  <div className="mb-1">
+    <div className="flex justify-between text-xs text-gray-400">
       <span>{label}</span>
-      <span>{value}</span>
+      <span>{value} {max !== 100 && max > 0 ? `/ ${max}` : ''}</span>
     </div>
-    <div className="w-full bg-gray-800 rounded-full h-2.5">
-      <div className={`h-2.5 rounded-full ${colorClass}`} style={{ width: `${value}%` }}></div>
+    <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+      <div className={`h-full ${color}`} style={{ width: `${Math.min(100, (value / (max || 100)) * 100)}%` }}></div>
     </div>
   </div>
 );
 
-export const StatusDisplay: React.FC<Props> = ({ student, turn, maxTurns }) => {
-  const successRate = calculateSuccessRate(student);
+export const StatusDisplay: React.FC<Props> = ({ student, player, turn }) => {
   return (
-    <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
-      <h2 className="text-xl font-bold mb-4 text-blue-400 border-b border-gray-700 pb-2">
-        Student Status (Turn {turn > maxTurns ? maxTurns : turn}/{maxTurns})
-      </h2>
-      
-      <div className="mb-6">
-        <p className="text-sm text-gray-400 mb-1">Health & Vitality</p>
-        <div className="w-full bg-gray-800 rounded-full h-4 border border-gray-600">
-           <div 
-             className="bg-red-600 h-full rounded-full transition-all duration-300" 
-             style={{ width: `${student.currentHealth}%` }}
-           ></div>
+    <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 space-y-6">
+      {/* Header */}
+      <div className="border-b border-gray-700 pb-2 flex justify-between items-end">
+        <div>
+          <h2 className="text-xl font-bold text-blue-400">{student.name}</h2>
+          <span className="text-xs text-gray-500">Target Student</span>
         </div>
-        <p className="text-right text-xs mt-1 text-red-400">{student.currentHealth} / 100</p>
+        <div className="text-right">
+          <span className="text-2xl font-mono text-white">Day {turn}</span>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-2">
-        <ProgressBar label="Resistance (저항)" value={student.stats.resistance} colorClass="bg-yellow-600" />
-        <ProgressBar label="Sensitivity (감도)" value={student.stats.sensitivity} colorClass="bg-pink-500" />
-        <ProgressBar label="Obedience (순종)" value={student.stats.obedience} colorClass="bg-blue-500" />
-        <ProgressBar label="Corruption (타락)" value={student.stats.corruption} colorClass="bg-purple-600" />
+      {/* Vitals */}
+      <div className="space-y-3">
+        <StatRow label="Health (체력)" value={student.currentHealth} color="bg-red-500" />
+        <StatRow label="Stress (스트레스)" value={student.stress} color="bg-orange-500" />
+        <StatRow label="Hypnosis Depth (최면 심도)" value={student.hypnosisDepth} max={4} color="bg-purple-600" />
       </div>
 
-      <div className="mt-4 p-2 bg-gray-800 rounded text-center">
-        <span className="text-sm text-gray-400">Current Success Rate: </span>
-        <span className="text-lg font-bold text-green-400">{successRate}%</span>
+      {/* Shittim Chest (Player) */}
+      <div className="bg-gray-800 p-3 rounded border border-gray-600">
+        <div className="flex justify-between items-center mb-1">
+          <span className="text-sm font-bold text-blue-300">Shittim Chest (G.S.C)</span>
+          <span className="text-xs text-blue-200">Lv.{player.hackingLevel}</span>
+        </div>
+        <StatRow label="AP (Action Points)" value={player.ap} max={player.maxAp} color="bg-blue-500" />
       </div>
+
+      {/* Core Stats */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <StatRow label="Mystic (신비)" value={student.stats.mystic} max={200} color="bg-cyan-400" />
+          <StatRow label="Resistance (저항)" value={student.stats.resistance} color="bg-yellow-600" />
+        </div>
+        <div>
+           <StatRow label="Corruption (타락)" value={student.stats.corruption} color="bg-fuchsia-600" />
+           <StatRow label="Obedience (순종)" value={student.stats.obedience} color="bg-green-500" />
+        </div>
+      </div>
+       <div className="grid grid-cols-2 gap-4">
+         <StatRow label="Sensitivity (감도)" value={student.stats.sensitivity} color="bg-pink-500" />
+         <StatRow label="Pleasure Tol. (내성)" value={student.stats.pleasureTolerance} color="bg-indigo-500" />
+       </div>
     </div>
   );
 };

@@ -1,23 +1,16 @@
+
 import React, { useEffect } from 'react';
 import { useGameStore } from './stores/gameStore';
 import { StatusDisplay } from './components/StatusDisplay';
 import { ActionControls } from './components/ActionControls';
 import { LogViewer } from './components/LogViewer';
 import { RecordHistory } from './components/RecordHistory';
-import { CombatOverlay } from './components/CombatOverlay'; // 추가
+import { CombatOverlay } from './components/CombatOverlay';
 
 const App: React.FC = () => {
   const { 
-    student, 
-    turn, 
-    maxTurns, 
-    logs, 
-    isGameOver, 
-    records,
-    performTraining, 
-    rest, 
-    resetGame,
-    loadRecords
+    student, player, turn, logs, isGameOver, records,
+    performAction, rest, resetGame, loadRecords 
   } = useGameStore();
 
   useEffect(() => {
@@ -25,42 +18,56 @@ const App: React.FC = () => {
   }, [loadRecords]);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-200 p-4 md:p-8 font-mono relative">
-      <CombatOverlay /> {/* 추가: 맨 위에 배치 */}
-    <div className="min-h-screen bg-gray-950 text-gray-200 p-4 md:p-8 font-mono">
-      <div className="max-w-5xl mx-auto">
-        <header className="mb-8 border-b border-blue-900 pb-4">
-          <h1 className="text-3xl font-bold text-blue-500 tracking-tighter">
-            Blue Archive: <span className="text-white">Möbius of Desires</span>
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            System Ver 0.1.0 // Connected to Shittim Chest...
-          </p>
+    <div className="min-h-screen bg-black text-gray-200 p-2 md:p-6 font-mono relative overflow-hidden">
+      <CombatOverlay />
+
+      <div className="max-w-6xl mx-auto h-[95vh] flex flex-col">
+        {/* Header */}
+        <header className="flex justify-between items-center mb-4 border-b border-gray-800 pb-2">
+          <div>
+            <h1 className="text-2xl font-bold text-blue-500 tracking-tighter">
+              BA: <span className="text-white">Möbius</span>
+            </h1>
+            <p className="text-xs text-gray-600">Schale Tactical Guidance System v2.0</p>
+          </div>
+          <div className="text-right text-xs text-gray-500">
+             Target: {student.name}
+          </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          {/* Left Column: Status */}
-          <div className="md:col-span-5 lg:col-span-4">
-            <StatusDisplay student={student} turn={turn} maxTurns={maxTurns} />
+        {/* Main Content Grid */}
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0">
+          
+          {/* Left: Status (4 cols) */}
+          <div className="lg:col-span-4 overflow-y-auto pr-2">
+            <StatusDisplay student={student} player={player} turn={turn} />
+            <RecordHistory records={records} />
           </div>
 
-          {/* Right Column: Actions & Logs */}
-          <div className="md:col-span-7 lg:col-span-8 flex flex-col gap-6">
-            <LogViewer logs={logs} />
+          {/* Center: Logs (4 cols) */}
+          <div className="lg:col-span-4 flex flex-col min-h-0">
+             <div className="bg-gray-900 rounded-t-lg border border-gray-700 p-2 text-xs text-gray-400 text-center">
+               Operation Logs
+             </div>
+             <div className="flex-1 min-h-0">
+               <LogViewer logs={logs} />
+             </div>
+          </div>
+
+          {/* Right: Actions (4 cols) */}
+          <div className="lg:col-span-4 h-full min-h-0">
             <ActionControls 
-              onTrain={performTraining} 
-              onRest={rest} 
-              onReset={resetGame}
+              student={student}
+              player={player}
+              onTrain={performAction}
+              onRest={rest}
               isGameOver={isGameOver}
+              onReset={resetGame}
             />
           </div>
         </div>
-
-        {/* Bottom: History */}
-        <RecordHistory records={records} />
       </div>
     </div>
-  </div>
   );
 };
 
